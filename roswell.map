@@ -3,8 +3,8 @@
 
 ;;; Level 1: A 52x42 Map
 (defun level1-start ()
-  (setf (x-position *player*) 64)
-  (setf (y-position *player*) 160))
+  (setf (x-position *player*) 80)
+  (setf (y-position *player*) 176))
 
 (let  ((level1 (make-instance 'level-map
 			      :map-width 52
@@ -16,10 +16,35 @@
 						      :initial-element -1)
 			      :load-function 'level1-start)))
 
+  ;; put walls around the map
   (dotimes (i 52)
     (setf (aref (obstacle-map level1) i 0) 20)
     (setf (aref (obstacle-map level1) i 41) 20)
     (when (< i 42)
       (setf (aref (obstacle-map level1) 0 i) 20)
       (setf (aref (obstacle-map level1) 51 i) 20)))
+  ;; stick in some random radiation warnings
+  (dotimes (i 25)
+    (setf (aref (bg-map level1) (random 52) (random 42)) 22))
+  ;; Some platforms toward the top
+  (dotimes (i 5)
+    (setf (aref (obstacle-map level1) (1+ i) 6) 20)
+    (setf (aref (obstacle-map level1) (+ i 46) 6) 20))
+  ;; Big long platform
+  (dotimes (i 40)
+    (setf (aref (obstacle-map level1) (+ i 6) 10) 20))
+  ;; Full length of the map, with gap in the middle
+  (dotimes (i 24)
+    (setf (aref (obstacle-map level1) (+ i 1) 15) 20)
+    (setf (aref (obstacle-map level1) (+ i 26) 15) 20))
+  ;; Three long platforms forming a zig-zag
+  (dotimes (i 45)
+    (setf (aref (obstacle-map level1) (+ i 6) 20) 20)
+    (setf (aref (obstacle-map level1) (1+ i) 25) 20)
+    (setf (aref (obstacle-map level1) (+ i 6) 30) 20))
+  ;; Another gap in the middle, this time a bit bigger
+  (dotimes (i 20)
+    (setf (aref (obstacle-map level1) (1+ i) 35) 20)
+    (setf (aref (obstacle-map level1) (+ i 31) 35) 20))
+  ;; Add newly created level to the game.
   (add-level level1))
