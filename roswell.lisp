@@ -25,10 +25,12 @@
 (defparameter +gravity+ 2)
 
 (defparameter *player-won* nil)
+(defparameter *game-counter* 0) ;; for animation & other timing needs
 
 ;;; These will hold the SDL surfaces containing tiles and sprites
 (defparameter *characters* nil)
 (defparameter *tiles* nil)
+(defparameter *projectile* nil)
 
 ;;; Some utilities that may come in handy...
 (defun word-wrap (string num-chars)
@@ -70,6 +72,7 @@ assuming a 26x26 bounding box."
 ;;; before dying. sprite indicates which sprites to use for drawing the
 ;;; character.
 (defparameter *player* nil) ; Instance of player representing the player
+(defparameter *enemies* nil) ; List containing instances of all enemies
 
 (defclass game-char ()
   ((x-position :initarg :x-position :accessor x-position)
@@ -119,6 +122,15 @@ assuming a 26x26 bounding box."
   (when (or (eq direction 'left) (eq direction 'right))
     (setf (step-count character) (mod (1+ (step-count character)) 32))))
 
+(defmethod shoot ((character game-char) &optional (sprite 2))
+  (let ((x (x-position character)) (y (- (y-position character) 10)))
+    (cond ((eq (direction character) 'up) (decf y 38))
+	  ((eq (direction character) 'down) (incf y 16))
+	  ((eq (direction character) 'left) (decf x 16))
+	  ((eq (direction character) 'right) (incf x 16)))
+    (make-instance 'projectile :x-position x :y-position y
+		   :direction (direction character) :sprite sprite)))
+
 (defclass player (game-char)
   ((points :initarg :points :initform 0 :accessor points)
    (keys :initarg :keys :initform 0 :accessor keys)
@@ -133,6 +145,80 @@ assuming a 26x26 bounding box."
 				(x-position player)
 				(y-position player) 1 16))))
     (setf (y-velocity player) -20)))
+
+(defmethod shoot ((player player)
+		  &optional (sprite (if (or (eq (direction player) 'up)
+					    (eq (direction player) 'down))
+					1 0)))
+  (call-next-method player sprite))
+
+;;; The projectile class contains details of a bullet or a laser beam.
+(defparameter *projectiles* nil)
+
+(defclass projectile ()
+  ((x-position :initarg :x-position :accessor x-position)
+   (y-position :initarg :y-position :accessor y-position)
+   (direction :initarg :direction :accessor direction)
+   (ttl :accessor ttl)
+   (sprite :initarg :sprite :initform 2 :accessor sprite)))
+
+(defmethod initialize-instance :after ((projectile projectile) &rest rest)
+  (declare (ignore rest))
+  (case (direction projectile)
+    (up (setf (ttl projectile) (floor (+ (ash +screen-height+ -1)
+					 (- (y-position projectile)
+					    (y-position *player*))) 6)))
+    (down (setf (ttl projectile) (floor (+ (ash +screen-height+ -1)
+					   (- (y-position *player*)
+					      (y-position projectile))) 6)))
+    (left (setf (ttl projectile) (floor (+ (ash +screen-width+ -1)
+					   (- (x-position projectile)
+					      (x-position *player*))) 6)))
+    (right (setf (ttl projectile) (floor (+ (ash +screen-width+ -1)
+					    (- (x-position *player*)
+					       (x-position projectile))) 6))))
+  (when (null (ttl projectile)) (setf (ttl projectile) 0))
+  (push projectile *projectiles*))
+
+(defmethod detect-projectile-collision ((projectile projectile))
+  (dolist (enemy *enemies*)
+    (when (and (> (x-position projectile) (- (x-position enemy) 16))
+	       (< (x-position projectile) (+ (x-position enemy) 16))
+	       (> (y-position projectile) (- (y-position enemy) 16))
+	       (< (y-position projectile) (+ (y-position enemy) 16)))
+      (decf (hit-points enemy))
+      (setf (ttl projectile) 0)))
+  (when (and (> (x-position projectile) (- (x-position *player*) 16))
+	     (< (x-position projectile) (+ (x-position *player*) 16))
+	     (> (y-position projectile) (- (y-position *player*) 16))
+	     (< (y-position projectile) (+ (y-position *player*) 16)))
+    (decf (hit-points *player*))
+    (setf (ttl projectile) 0)))
+
+(defun update-projectiles ()
+  "Loop through the projectiles, updating position, looking for collisions, and
+finally remove old and collided projectiles."
+  (dolist (projectile *projectiles*)
+    (decf (ttl projectile))
+    (cond ((eq (direction projectile) 'up)
+	   (decf (y-position projectile) 6))
+	  ((eq (direction projectile) 'down)
+	   (incf (y-position projectile) 6))
+	  ((eq (direction projectile) 'left)
+	   (decf (x-position projectile) 6))
+	  ((eq (direction projectile) 'right)
+	   (incf (x-position projectile) 6)))
+    (detect-projectile-collision projectile)
+    (draw-tile *projectile* (sprite projectile)
+	       (+ (- (x-position projectile) 16 
+		     (x-position *player*))
+		  (ash +screen-width+ -1))
+	       (+ (- (y-position projectile) 16
+		     (y-position *player*))
+		  (ash +screen-height+ -1))))
+  (setf *projectiles* (remove-if-not #'(lambda (projectile)
+					 (> (ttl projectile) 0))
+				     *projectiles*)))
 
 ;;; The level-map class contains the details of a map. The bg-map,
 ;;; obstacle-map, and object-map variables are two-dimensional arrays
@@ -233,7 +319,13 @@ on the screen."
 	 :surface (sdl:load-image
 		   (concatenate 'string +data-directory+ "media/tiles.png")
 		   :image-type :png)
-	 :pixel-alpha t)))
+	 :pixel-alpha t))
+  (setf *projectile* (sdl:convert-to-display-format
+		      :surface (sdl:load-image
+				(concatenate 'string +data-directory+
+					     "media/projectiles.png")
+				:image-type :ping)
+		      :pixel-alpha t)))
 
 ;;; Logic functions -- things that will be applied every run through
 ;;; the game loop.
@@ -257,6 +349,7 @@ on the screen."
   "Sets game state globals back to their original values..."
   (setf *game-levels* nil)
   (setf *current-level* nil)
+  (setf *projectiles* nil)
   (setf *player-won* nil))
 
 ;;; Game Loop
@@ -281,6 +374,7 @@ on the screen."
       (:key-down-event (:key key)
         (cond ((sdl:key= key :sdl-key-escape) (sdl:push-quit-event))))
       (:idle ()
+       (setf *game-counter* (mod (1+ *game-counter*) 128))
        (apply-gravity)
        (setf (x-velocity *player*) 0)
        (when (sdl:get-key-state :sdl-key-left) (setf (x-velocity *player*) -2))
@@ -289,7 +383,13 @@ on the screen."
 	       (sdl:get-key-state :sdl-key-lctrl)
 	       (sdl:get-key-state :sdl-key-rctrl))
 	 (jump *player*))
+       (when (and (= 0 (mod *game-counter* 8))
+		  (or
+		   (sdl:get-key-state :sdl-key-lalt)
+		   (sdl:get-key-state :sdl-key-ralt)))
+	 (shoot *player*))
        (move-characters)
        (draw-map)
        (draw-player)
+       (update-projectiles)
        (sdl:update-display)))))
