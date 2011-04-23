@@ -175,8 +175,16 @@ on the screen."
 		   :image-type :png)
 	 :pixel-alpha t)))
 
+;;; Clear things out for new game, etc.
+(defun clear-game ()
+  "Sets game state globals back to their original values..."
+  (setf *game-levels* nil)
+  (setf *current-level* nil)
+  (setf *player-won* nil))
+
 ;;; Game Loop
 (defun main ()
+  (clear-game)
   (setf *player* (make-instance 'player
 				:x-position 1 :y-position 1
 				:direction 'right
