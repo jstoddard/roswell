@@ -49,6 +49,18 @@
                                                      (1- num-chars)))))
              (concatenate 'string string1 (word-wrap string2 num-chars)))))))
 
+(declaim (inline get-collision-tiles))
+(defun get-collision-tiles (x y &optional (x-bbox 13) (y-bbox 16))
+  "Return the tiles that a character in position (x,y) would collide with,
+assuming a 26x26 bounding box."
+  (remove-duplicates
+   (list
+    (list (ash (- x x-bbox) -5) (ash (- y y-bbox) -5))
+    (list (ash (+ x x-bbox) -5) (ash (- y y-bbox) -5))
+    (list (ash (+ x x-bbox) -5) (ash (+ y y-bbox) -5))
+    (list (ash (- x x-bbox) -5) (ash (+ y y-bbox) -5)))
+   :test #'equal))
+
 ;;; This class defines a game character. Both the player and the bad guys
 ;;; will be subclassed from this. The position and velocity variables are
 ;;; self-explanatory. direction is the direction in which the projectile
@@ -62,17 +74,63 @@
 (defclass game-char ()
   ((x-position :initarg :x-position :accessor x-position)
    (y-position :initarg :y-position :accessor y-position)
-   (x-velocity :initarg :x-velocity :accessor x-velocity)
-   (y-velocity :initarg :y-velocity :accessor y-velocity)
-   (direction :initarg :direction :accessor direction)
+   (x-velocity :initarg :x-velocity :initform 0 :accessor x-velocity)
+   (y-velocity :initarg :y-velocity :initform 0 :accessor y-velocity)
+   (direction :initarg :direction :initform 'right :accessor direction)
    (step-count :initarg :step-count :initform 0 :accessor step-count)
    (hit-points :initarg :hit-points :accessor hit-points)
    (sprite :initarg :sprite :accessor sprite)))
+
+(defmethod collisionp ((character game-char))
+  (cond ((or (>= (+ (x-position character) 16) (ash (map-width *current-level*) 5))
+	     (< (- (x-position character) 16) 0)
+	     (>= (+ (y-position character) 16) (ash (map-height *current-level*) 5))
+	     (< (- (y-position character) 16) 0)) t)
+	((and (not (position nil 
+			     (mapcar #'(lambda (x)
+					 (= -1 (aref (obstacle-map *current-level*)
+						     (first x) (second x))))
+				     (get-collision-tiles
+				      (x-position character)
+				      (y-position character))))))
+	 nil)
+	(t t)))
+
+(defmethod move ((character game-char) direction)
+  (case direction
+    (up (setf (direction character) 'up)
+	(decf (y-position character) 2)
+	(when (collisionp character)
+	  (incf (y-position character) 2)
+	  (setf (y-velocity character) 0)))
+    (down (setf (direction character) 'down)
+	  (incf (y-position character) 2)
+	  (when (collisionp character)
+	    (decf (y-position character) 2)
+	    (setf (y-velocity character) 0)))
+    (left (setf (direction character) 'left)
+	  (decf (x-position character) 2)
+	  (when (collisionp character)
+	    (incf (x-position character) 2)
+	    (setf (x-velocity character) 0)))
+    (right (setf (direction character) 'right)
+	   (incf (x-position character) 2)
+	   (when (collisionp character)
+	     (decf (x-position character) 2)
+	     (setf (x-velocity character) 0))))
+  (when (or (eq direction 'left) (eq direction 'right))
+    (setf (step-count character) (mod (1+ (step-count character)) 64))))
 
 (defclass player (game-char)
   ((points :initarg :points :initform 0 :accessor points)
    (keys :initarg :keys :initform 0 :accessor keys)
    (max-hp :initarg :max-hp :initform 15 :accessor max-hp)))
+
+(defmethod jump ((player player))
+  (when (first (get-collision-tiles (x-position player)
+				    (y-position player)
+				    1 16))
+    (setf (y-velocity player) -4)))
 
 ;;; The level-map class contains the details of a map. The bg-map,
 ;;; obstacle-map, and object-map variables are two-dimensional arrays
@@ -175,6 +233,23 @@ on the screen."
 		   :image-type :png)
 	 :pixel-alpha t)))
 
+;;; Logic functions -- things that will be applied every run through
+;;; the game loop.
+(defun apply-gravity ()
+  "Adjust player and enemy y-velocity for the effects of gravity."
+  (incf (y-velocity *player*) +gravity+))
+
+(defun move-characters ()
+  "Move the game characters according to their velocities."
+  (when (> (x-velocity *player*) 0)
+    (dotimes (i (x-velocity *player*)) (move *player* 'right)))
+  (when (< (x-velocity *player*) 0)
+    (dotimes (i (- 0 (x-velocity *player*))) (move *player* 'left)))
+  (when (> (y-velocity *player*) 0)
+    (dotimes (i (y-velocity *player*)) (move *player* 'down)))
+  (when (< (y-velocity *player*) 0)
+    (dotimes (i (- 0 (y-velocity *player*))) (move *player* 'up))))
+
 ;;; Clear things out for new game, etc.
 (defun clear-game ()
   "Sets game state globals back to their original values..."
@@ -204,6 +279,15 @@ on the screen."
       (:key-down-event (:key key)
         (cond ((sdl:key= key :sdl-key-escape) (sdl:push-quit-event))))
       (:idle ()
+       (setf (x-velocity *player*) 0)
+       (when (sdl:get-key-state :sdl-key-left) (setf (x-velocity *player*) -1))
+       (when (sdl:get-key-state :sdl-key-right) (setf (x-velocity *player*) 1))
+       (when (and
+	      (or
+	       (sdl:get-key-state :sdl-key-lmeta)
+	       (sdl:get-key-state :sdl-key-rmeta)))
+	 (jump *player*))
+       (move-characters)
        (draw-map)
        (draw-player)
        (sdl:update-display)))))
