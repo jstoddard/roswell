@@ -36,7 +36,7 @@
   ;; Full length of the map, with gap in the middle
   (dotimes (i 24)
     (setf (aref (obstacle-map level1) (+ i 1) 15) 20)
-    (setf (aref (obstacle-map level1) (+ i 26) 15) 20))
+    (setf (aref (obstacle-map level1) (+ i 27) 15) 20))
   ;; Three long platforms forming a zig-zag
   (dotimes (i 45)
     (setf (aref (obstacle-map level1) (+ i 6) 20) 20)

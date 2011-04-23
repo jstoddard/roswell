@@ -50,7 +50,7 @@
              (concatenate 'string string1 (word-wrap string2 num-chars)))))))
 
 (declaim (inline get-collision-tiles))
-(defun get-collision-tiles (x y &optional (x-bbox 13) (y-bbox 16))
+(defun get-collision-tiles (x y &optional (x-bbox 13) (y-bbox 15))
   "Return the tiles that a character in position (x,y) would collide with,
 assuming a 26x26 bounding box."
   (remove-duplicates
@@ -98,13 +98,11 @@ assuming a 26x26 bounding box."
 
 (defmethod move ((character game-char) direction)
   (case direction
-    (up (setf (direction character) 'up)
-	(decf (y-position character) 2)
+    (up (decf (y-position character) 2)
 	(when (collisionp character)
 	  (incf (y-position character) 2)
 	  (setf (y-velocity character) 0)))
-    (down (setf (direction character) 'down)
-	  (incf (y-position character) 2)
+    (down (incf (y-position character) 2)
 	  (when (collisionp character)
 	    (decf (y-position character) 2)
 	    (setf (y-velocity character) 0)))
@@ -119,7 +117,7 @@ assuming a 26x26 bounding box."
 	     (decf (x-position character) 2)
 	     (setf (x-velocity character) 0))))
   (when (or (eq direction 'left) (eq direction 'right))
-    (setf (step-count character) (mod (1+ (step-count character)) 64))))
+    (setf (step-count character) (mod (1+ (step-count character)) 32))))
 
 (defclass player (game-char)
   ((points :initarg :points :initform 0 :accessor points)
@@ -127,10 +125,14 @@ assuming a 26x26 bounding box."
    (max-hp :initarg :max-hp :initform 15 :accessor max-hp)))
 
 (defmethod jump ((player player))
-  (when (first (get-collision-tiles (x-position player)
-				    (y-position player)
-				    1 16))
-    (setf (y-velocity player) -4)))
+  (when	(and (position nil 
+		       (mapcar #'(lambda (x)
+				   (= -1 (aref (obstacle-map *current-level*)
+					       (first x) (second x))))
+			       (get-collision-tiles
+				(x-position player)
+				(y-position player) 1 16))))
+    (setf (y-velocity player) -20)))
 
 ;;; The level-map class contains the details of a map. The bg-map,
 ;;; obstacle-map, and object-map variables are two-dimensional arrays
@@ -204,7 +206,7 @@ on the screen."
 
 (defun draw-player ()
   "Draw player at center of screen."
-  (let ((sprite (+ (sprite *player*) (ash (step-count *player*) -4))))
+  (let ((sprite (+ (sprite *player*) (ash (step-count *player*) -3))))
     (case (direction *player*)
       (right nil)
       (left (setf sprite (+ sprite 4)))
@@ -279,13 +281,13 @@ on the screen."
       (:key-down-event (:key key)
         (cond ((sdl:key= key :sdl-key-escape) (sdl:push-quit-event))))
       (:idle ()
+       (apply-gravity)
        (setf (x-velocity *player*) 0)
-       (when (sdl:get-key-state :sdl-key-left) (setf (x-velocity *player*) -1))
-       (when (sdl:get-key-state :sdl-key-right) (setf (x-velocity *player*) 1))
-       (when (and
-	      (or
-	       (sdl:get-key-state :sdl-key-lmeta)
-	       (sdl:get-key-state :sdl-key-rmeta)))
+       (when (sdl:get-key-state :sdl-key-left) (setf (x-velocity *player*) -2))
+       (when (sdl:get-key-state :sdl-key-right) (setf (x-velocity *player*) 2))
+       (when (or
+	       (sdl:get-key-state :sdl-key-lctrl)
+	       (sdl:get-key-state :sdl-key-rctrl))
 	 (jump *player*))
        (move-characters)
        (draw-map)
