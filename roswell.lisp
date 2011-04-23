@@ -24,6 +24,9 @@
 (defparameter +screen-height+ 480)
 (defparameter +gravity+ 2)
 
+(defparameter *player-won* nil)
+
+;;; These will hold the SDL surfaces containing tiles and sprites
 (defparameter *characters* nil)
 (defparameter *tiles* nil)
 
@@ -82,28 +85,32 @@
    (map-height :initarg :map-height :accessor map-height)
    (bg-map :initarg :bg-map :accessor bg-map)
    (obstacle-map :initarg :obstacle-map :accessor obstacle-map)
-   (object-map :initarg :object-map :accessor object-map)))
+   (object-map :initarg :object-map :accessor object-map)
+   (load-function :initarg :load-function :accessor load-function)))
 
 (defun load-level (map-file)
   "Load the map given by map-file."
   (load (concatenate 'string +data-directory+ map-file)))
 
 (defun add-level (map)
-  "Push map onto *game-levels*, creating a new map accessible to the game
+  "Append map to *game-levels*, creating a new map accessible to the game
 via select-map."
-  (push map *game-levels*))
+ (setf *game-levels* (append *game-levels* (list map))))
 
 (defun select-level (level)
   "Look up the map for the given level and set it as the current map. (i.e.
 set *current-level* to that map)."
-  (setf *current-level* (nth level *game-levels*)))
+  (setf *current-level* (nth level *game-levels*))
+  (if *current-level*
+      (funcall (load-function *current-level*))
+      (setf *player-won* t)))
 
 ;;; Drawing functions
 (defun draw-tile (tile-set tile-number x y)
   "Draw the tile given by tile-number to the display surface at x, y.
 tile-number should be an integer between 0 and 299, inclusive."
   (multiple-value-bind (tile-y tile-x) (floor tile-number 20)
-    (sdl:set-cell (sdl:rectangle :x(* tile-x 32)
+    (sdl:set-cell (sdl:rectangle :x (* tile-x 32)
 				 :y (* tile-y 32)
 				 :w 32 :h 32)
 		  :surface tile-set)
@@ -139,7 +146,7 @@ on the screen."
 
 (defun draw-player ()
   "Draw player at center of screen."
-  (let ((sprite (+ (sprite *player*) (ash (step-count *player*) -5))))
+  (let ((sprite (+ (sprite *player*) (ash (step-count *player*) -4))))
     (case (direction *player*)
       (right nil)
       (left (setf sprite (+ sprite 4)))
@@ -151,7 +158,6 @@ on the screen."
     (draw-tile *characters* sprite
 	       (- (ash +screen-width+ -1) 16)
 	       (- (ash +screen-height+ -1) 48))))
-
 
 ;;; Functions to load game assets
 (defun load-assets ()
@@ -183,10 +189,13 @@ on the screen."
     (sdl:initialise-default-font)
     ;; load our game assets
     (load-assets)
+    (load-level "roswell.map")
+    (select-level 0)
     (sdl:with-events ()
       (:quit-event () t)
       (:key-down-event (:key key)
         (cond ((sdl:key= key :sdl-key-escape) (sdl:push-quit-event))))
       (:idle ()
+       (draw-map)
        (draw-player)
        (sdl:update-display)))))

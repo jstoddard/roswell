@@ -1,0 +1,25 @@
+;;; This is a -*- Lisp -*- file...
+(in-package #:roswell)
+
+;;; Level 1: A 52x42 Map
+(defun level1-start ()
+  (setf (x-position *player*) 64)
+  (setf (y-position *player*) 160))
+
+(let  ((level1 (make-instance 'level-map
+			      :map-width 52
+			      :map-height 42
+			      :bg-map (make-array '(52 42) :initial-element 1)
+			      :obstacle-map (make-array '(52 42)
+							:initial-element -1)
+			      :object-map (make-array '(52 42)
+						      :initial-element -1)
+			      :load-function 'level1-start)))
+
+  (dotimes (i 52)
+    (setf (aref (obstacle-map level1) i 0) 20)
+    (setf (aref (obstacle-map level1) i 41) 20)
+    (when (< i 42)
+      (setf (aref (obstacle-map level1) 0 i) 20)
+      (setf (aref (obstacle-map level1) 51 i) 20)))
+  (add-level level1))
