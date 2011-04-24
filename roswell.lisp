@@ -125,7 +125,7 @@ assuming a 26x26 bounding box."
 (defmethod shoot ((character game-char) &optional (sprite 2))
   (let ((x (x-position character)) (y (- (y-position character) 10)))
     (cond ((eq (direction character) 'up) (decf y 38))
-	  ((eq (direction character) 'down) (incf y 16))
+	  ((eq (direction character) 'down) (incf y 26))
 	  ((eq (direction character) 'left) (decf x 16))
 	  ((eq (direction character) 'right) (incf x 16)))
     (make-instance 'projectile :x-position x :y-position y
@@ -379,6 +379,8 @@ on the screen."
        (setf (x-velocity *player*) 0)
        (when (sdl:get-key-state :sdl-key-left) (setf (x-velocity *player*) -2))
        (when (sdl:get-key-state :sdl-key-right) (setf (x-velocity *player*) 2))
+       (when (sdl:get-key-state :sdl-key-up) (setf (direction *player*) 'up))
+       (when (sdl:get-key-state :sdl-key-down) (setf (direction *player*) 'down))
        (when (or
 	       (sdl:get-key-state :sdl-key-lctrl)
 	       (sdl:get-key-state :sdl-key-rctrl))
